@@ -42,9 +42,9 @@ jobs:
         run: |
           test -s app/build/outputs/apk/debug/app-debug.apk
           mkdir -p release-output
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/Spatial-Audio-Engine-v0.3.0.apk
-          test -s release-output/Spatial-Audio-Engine-v0.3.0.apk
-          ls -lh release-output/Spatial-Audio-Engine-v0.3.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/Spatial-Audio-Engine-v0.3.1.apk
+          test -s release-output/Spatial-Audio-Engine-v0.3.1.apk
+          ls -lh release-output/Spatial-Audio-Engine-v0.3.1.apk
 
       - name: Remove outdated releases and APK assets
         env:
@@ -65,15 +65,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ github.token }}
-          tag_name: v0.3.0-build.${{ github.run_number }}
-          name: Spatial Audio Engine v0.3.0 — Build ${{ github.run_number }}
+          tag_name: v0.3.1-build.${{ github.run_number }}
+          name: Spatial Audio Engine v0.3.1 — Build ${{ github.run_number }}
           body: |
-            Spatial Audio Engine v0.3.0 — real-time PCM DSP effects for supported direct audio streams.
+            Spatial Audio Engine v0.3.1 — real-time PCM DSP effects for supported direct audio streams.
 
             This is a virtual stereo DSP prototype, not Dolby Atmos-certified. Stream compatibility depends on the source format and device.
           draft: false
           prerelease: false
           generate_release_notes: true
-          files: release-output/Spatial-Audio-Engine-v0.3.0.apk
+          files: release-output/Spatial-Audio-Engine-v0.3.1.apk
           fail_on_unmatched_files: true
           make_latest: true
