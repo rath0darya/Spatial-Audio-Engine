@@ -18,6 +18,8 @@ class SpatialDspProcessor : BaseAudioProcessor() {
     private var delayR = FloatArray(0)
     private var delayIndex = 0
     private var delayFrames = 1
+    private var monoDelay = FloatArray(0)
+    private var monoIndex = 0
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT ||
@@ -25,22 +27,34 @@ class SpatialDspProcessor : BaseAudioProcessor() {
         delayFrames = (inputAudioFormat.sampleRate * 0.013).toInt().coerceAtLeast(1)
         delayL = FloatArray(delayFrames)
         delayR = FloatArray(delayFrames)
-        return inputAudioFormat
+        monoDelay = FloatArray((inputAudioFormat.sampleRate * 0.008).toInt().coerceAtLeast(1))
+        monoIndex = 0
+        // Expand mono streams to stereo so the spatial field can actually create left/right cues.
+        return if (inputAudioFormat.channelCount == 1)
+            AudioProcessor.AudioFormat(inputAudioFormat.sampleRate, 2, C.ENCODING_PCM_16BIT)
+        else inputAudioFormat
     }
 
     override fun onFlush() {
         lowL = 0.0; lowR = 0.0
-        delayL.fill(0f); delayR.fill(0f); delayIndex = 0
+        delayL.fill(0f); delayR.fill(0f); monoDelay.fill(0f); monoIndex = 0; delayIndex = 0
     }
 
     override fun queueInput(inputBuffer: java.nio.ByteBuffer) {
-        val channels = inputAudioFormat.channelCount
-        val frames = inputBuffer.remaining() / (channels * 2)
+        val inputChannels = inputAudioFormat.channelCount
+        val outputChannels = outputAudioFormat.channelCount
+        val frames = inputBuffer.remaining() / (inputChannels * 2)
         val input = inputBuffer.order(ByteOrder.nativeOrder())
-        val output = replaceOutputBuffer(frames * channels * 2).order(ByteOrder.nativeOrder())
-        while (input.remaining() >= channels * 2) {
+        val output = replaceOutputBuffer(frames * outputChannels * 2).order(ByteOrder.nativeOrder())
+        while (input.remaining() >= inputChannels * 2) {
             val l = input.short / 32768.0
-            val r = if (channels == 2) input.short / 32768.0 else l
+            var r = if (inputChannels == 2) input.short / 32768.0 else l
+            if (inputChannels == 1) {
+                val delayedMono = monoDelay[monoIndex].toDouble()
+                monoDelay[monoIndex] = l.toFloat()
+                monoIndex = (monoIndex + 1) % monoDelay.size
+                r = l * 0.38 + delayedMono * 0.62
+            }
             var ol = l
             var or = r
             if (enabled) {
@@ -61,7 +75,7 @@ class SpatialDspProcessor : BaseAudioProcessor() {
                 or = tanh(or * 1.04) / tanh(1.04)
             }
             output.putShort((ol.coerceIn(-1.0, 0.99997) * 32768.0).toInt().toShort())
-            if (channels == 2) output.putShort((or.coerceIn(-1.0, 0.99997) * 32768.0).toInt().toShort())
+            if (outputChannels == 2) output.putShort((or.coerceIn(-1.0, 0.99997) * 32768.0).toInt().toShort())
         }
         inputBuffer.position(inputBuffer.limit())
         output.flip()
