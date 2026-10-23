@@ -42,7 +42,7 @@ jobs:
         run: |
           test -s app/build/outputs/apk/debug/app-debug.apk
           mkdir -p release-output
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/Spatial-Audio-Engine-v0.2.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/Spatial-Audio-Engine-v0.3.0.apk
           test -s release-output/Spatial-Audio-Engine-v0.2.0.apk
           ls -lh release-output/Spatial-Audio-Engine-v0.2.0.apk
 
@@ -50,8 +50,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ github.token }}
-          tag_name: v0.2.0-build.${{ github.run_number }}
-          name: Spatial Audio Engine v0.2.0 — Build ${{ github.run_number }}
+          tag_name: v0.3.0-build.${{ github.run_number }}
+          name: Spatial Audio Engine v0.3.0 — Build ${{ github.run_number }}
           body: |
             Spotify-inspired Android listening companion with embedded YouTube playback and best-effort Android output-mix virtualizer / bass effects.
 
