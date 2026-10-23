@@ -1,29 +1,33 @@
 # Spatial Audio Engine
 
-Native Kotlin Android prototype for testing whether Android playback capture can observe eligible live media audio on a device. Target test setup: vivo Y400 Pro / OriginOS 6 + boAt Nirvana Ion ANC + YouTube.
+A native Kotlin Android listening companion with a Spotify-inspired interface, embedded YouTube playback, and best-effort Android system audio effects.
 
-## Current scope
-- Android MediaProjection consent flow and `AudioPlaybackCapture` for media/game usages.
-- Real-time signal-level detection only. Audio is processed in memory and is never written to storage.
-- No cloud backend, analytics, network permissions, downloaded audio, or pull requests.
-- GitHub Actions builds the APK and publishes it as an asset on the GitHub Releases page. Build output is not committed back into the repository.
+## Current features
+- Paste a YouTube watch, Shorts, live, or youtu.be link and play it in the embedded YouTube player.
+- Dark music-player UI with separate green, cyan, and violet accents.
+- **Wide**, **Cinema**, and **Deep Field** sound presets.
+- Attempts Android output-mix `Virtualizer` for a wider/binaural-style stage and `BassBoost` for deeper low frequencies.
+- Adjustable bass-effect strength.
+- Optional Android MediaProjection playback-capture diagnostic; samples are analysed in memory and not saved.
+- No audio downloads, no app backend, and no pull-request or scheduled workflow triggers.
 
-## Critical limitation
-Android playback capture provides a copy of eligible audio. It does not grant an ordinary app the ability to replace YouTube's output stream. YouTube may also opt out of capture, or the OEM may impose additional restrictions. This prototype does **not** apply spatial DSP to the audible output and does not claim to deliver 360-degree sound. It is a feasibility probe before attempting any output-routing design.
+## Important audio reality check
+This is **not Dolby Atmos-certified** and does not create true object-based Dolby Atmos rendering. The app uses Android's public output-mix audio-effect interface where the device permits it. Many OEM builds, including some Android customisations, reject or ignore global effects for third-party apps. The app reports when an effect cannot be enabled; it does not bypass device security or claim that an unavailable effect is working.
 
-A seamless system-wide effect generally requires an Android/OEM audio-effect insertion point, a supported audio-effect API, or routing that is not available to ordinary third-party apps on every device. Sending captured audio to the earbuds while YouTube remains audible can produce echo/double audio, so this build intentionally does not do that.
+YouTube is played by YouTube's official embedded web player, so playback, ads, restrictions, age-gating, and account requirements remain controlled by YouTube. Android playback capture is a separate diagnostic copy and is not an output-replacement pipeline. Capture success alone does not prove spatial processing is audible. Actual system-wide low-latency spatial rendering requires device/OEM audio-effect integration or an output path supported by that device.
 
-## Build
-Open in Android Studio with JDK 17 and Android SDK 35, or use the included GitHub Actions workflow. The workflow downloads Gradle 8.9, builds the debug APK, and attaches it to a versioned GitHub Release. It runs on pushes to `main` and manual dispatch only; it has no pull-request or scheduled trigger.
+## Build and releases
+- Pushes to `main` and manual workflow dispatch build the debug APK.
+- The workflow verifies the APK file and attaches it to a versioned **GitHub Release**.
+- APKs are release assets, not committed to the repository.
+- Pull requests and scheduled builds are intentionally not workflow triggers.
 
-## Manual device test
-1. Install the APK from the latest GitHub Release.
-2. Open YouTube and start a video.
-3. Open Spatial Audio Engine and press **TEST LIVE CAPTURE**.
-4. Accept Android's system capture prompt.
-5. Return to YouTube and play audio.
-6. Check the ongoing notification and Logcat (`SpatialAudioEngine`) for signal detection.
-7. If the app reports no signal, playback capture is unsupported or blocked for that session/build. No capture data is saved.
+## Device test
+1. Install the APK from [GitHub Releases](https://github.com/rath0darya/Spatial-Audio-Engine/releases).
+2. Paste a YouTube URL and tap **LOAD YOUTUBE**, then start playback using the embedded player.
+3. Try **ENABLE 3D STAGE** and **ENABLE DEEP FIELD**. Listen and verify whether your vivo Y400 Pro / OriginOS 6 and boAt Nirvana Ion ANC expose the effects. An enabled flag is not a substitute for listening tests.
+4. If system effects are unavailable, that is an OEM limitation rather than a setting this app can safely override.
+5. Use **TEST LIVE PLAYBACK CAPTURE** only to check whether Android permits capture; approve the system prompt and inspect the ongoing notification.
 
-## Permissions and privacy
-The app asks Android for explicit MediaProjection consent, which is required for playback capture. Captured samples remain in RAM for signal-level analysis. The app has no Internet permission.
+## Privacy
+The app has no audio-file storage feature and does not download YouTube media. YouTube embeds require Internet access. Playback-capture samples are used only in memory for signal-level diagnostics. The app does not include a cloud backend or analytics service.
