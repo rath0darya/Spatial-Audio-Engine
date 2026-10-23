@@ -14,7 +14,9 @@ concurrency:
 
 jobs:
   build-and-release:
+    name: Build and publish APK
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -29,28 +31,34 @@ jobs:
 
       - name: Download Gradle 8.9
         run: |
-          curl --fail --location --retry 3 https://services.gradle.org/distributions/gradle-8.9-bin.zip -o /tmp/gradle.zip
+          curl --fail --location --retry 3 --retry-all-errors https://services.gradle.org/distributions/gradle-8.9-bin.zip -o /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /tmp
+          /tmp/gradle-8.9/bin/gradle --version
 
       - name: Build debug APK
-        run: /tmp/gradle-8.9/bin/gradle --no-daemon --stacktrace assembleDebug
+        run: /tmp/gradle-8.9/bin/gradle --no-daemon --stacktrace clean assembleDebug
 
-      - name: Verify APK exists
-        run: test -s app/build/outputs/apk/debug/app-debug.apk
+      - name: Verify and name APK
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p release-output
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/Spatial-Audio-Engine-v0.2.0.apk
+          test -s release-output/Spatial-Audio-Engine-v0.2.0.apk
+          ls -lh release-output/Spatial-Audio-Engine-v0.2.0.apk
 
       - name: Publish APK to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.0-build.${{ github.run_number }}
-          name: Spatial Audio Engine v0.1.0 — Build ${{ github.run_number }}
+          token: ${{ github.token }}
+          tag_name: v0.2.0-build.${{ github.run_number }}
+          name: Spatial Audio Engine v0.2.0 — Build ${{ github.run_number }}
           body: |
-            Automated Android APK build from the main branch.
+            Spotify-inspired Android listening companion with embedded YouTube playback and best-effort Android output-mix virtualizer / bass effects.
 
-            **Prototype limitation:** this release tests Android playback-capture feasibility and signal detection only. It does not yet apply a spatial effect to YouTube's audible output or replace the system audio stream.
+            **Device compatibility:** system audio effects are OEM-dependent and may be rejected by the phone. This is not Dolby Atmos-certified. See README for limitations and test instructions.
           draft: false
           prerelease: true
           generate_release_notes: true
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: release-output/Spatial-Audio-Engine-v0.2.0.apk
+          fail_on_unmatched_files: true
           make_latest: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
