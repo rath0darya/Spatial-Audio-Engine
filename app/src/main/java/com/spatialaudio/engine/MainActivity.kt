@@ -1,419 +1,224 @@
 package com.spatialaudio.engine
 
 import android.app.Activity
-import android.content.Intent
-import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.media.audiofx.BassBoost
-import android.media.audiofx.Virtualizer
-import android.media.projection.MediaProjectionManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.ViewGroup
-import android.webkit.WebChromeClient
-import android.webkit.WebSettings
-import android.webkit.WebView
+import android.view.WindowManager
 import android.widget.*
+import androidx.core.view.WindowCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import java.util.Locale
 
-/** Spotify-inspired YouTube embed with best-effort Android output-mix effects. */
 class MainActivity : Activity() {
-    private val projectionRequest = 6012
-    private val bg = Color.rgb(9, 11, 17)
-    private val surface = Color.rgb(23, 26, 36)
-    private val surface2 = Color.rgb(31, 35, 48)
-    private val green = Color.rgb(29, 220, 126)
-    private val cyan = Color.rgb(74, 219, 245)
-    private val purple = Color.rgb(170, 117, 255)
-    private val white = Color.rgb(245, 247, 252)
-    private val muted = Color.rgb(169, 177, 194)
-
-    private lateinit var urlInput: EditText
-    private lateinit var player: WebView
-    private lateinit var status: TextView
-    private lateinit var effectStatus: TextView
-    private lateinit var depthStatus: TextView
-    private lateinit var captureButton: Button
-    private var virtualizer: Virtualizer? = null
-    private var bassBoost: BassBoost? = null
-    private var virtualizerOn = false
-    private var bassOn = false
-    private var bassStrength = 650
-    private var bassSeekBar: SeekBar? = null
+    private val bg = Color.rgb(9, 12, 19)
+    private val panel = Color.rgb(22, 27, 39)
+    private val panel2 = Color.rgb(32, 39, 54)
+    private val green = Color.rgb(35, 230, 135)
+    private val cyan = Color.rgb(67, 214, 245)
+    private val violet = Color.rgb(176, 126, 255)
+    private val white = Color.rgb(245, 248, 255)
+    private val muted = Color.rgb(157, 169, 190)
+    private lateinit var url: EditText
+    private lateinit var stateText: TextView
+    private lateinit var playButton: Button
+    private lateinit var dsp: SpatialDspProcessor
+    private var player: ExoPlayer? = null
+    private var preset = "WIDE"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, true)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
         window.statusBarColor = bg
         window.navigationBarColor = bg
-        if (Build.VERSION.SDK_INT >= 29) {
-            window.isNavigationBarContrastEnforced = false
-            window.isStatusBarContrastEnforced = false
-        }
+        window.decorView.systemUiVisibility = 0
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(28))
+            setPadding(dp(18), dp(12), dp(18), dp(14))
             setBackgroundColor(bg)
         }
-        val scroll = ScrollView(this).apply {
-            isFillViewport = true
-            clipToPadding = false
-            addView(root)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(dp(18), dp(12) + bars.top, dp(18), dp(14) + bars.bottom)
+            insets
         }
+        val scroll = ScrollView(this).apply { isFillViewport = true; clipToPadding = false; addView(root) }
 
-        val brandRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        brandRow.addView(TextView(this).apply {
-            text = "◉"
-            textSize = 30f
-            setTextColor(green)
-            typeface = Typeface.DEFAULT_BOLD
-        })
-        brandRow.addView(TextView(this).apply {
-            text = "  SPATIAL"
-            textSize = 23f
-            setTextColor(white)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
-        })
-        brandRow.addView(TextView(this).apply {
-            text = " AUDIO"
-            textSize = 23f
-            setTextColor(green)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
-        })
-        root.addView(brandRow)
-        root.addView(text("YOUR SOUND. A WIDER WORLD.", 12f, green, true).apply {
-            letterSpacing = 0.12f
-            setPadding(0, dp(4), 0, dp(18))
-        })
-        root.addView(text("Immersive listening", 29f, white, true))
-        root.addView(text("YouTube playback · 3D stage · deep-field bass", 14f, muted).apply {
-            setPadding(0, dp(5), 0, dp(18))
-        })
+        val brand = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        brand.addView(label("◉", 30f, green, true))
+        brand.addView(label(" SPATIAL", 23f, white, true).apply { typeface = Typeface.create("sans-serif-black", Typeface.BOLD) })
+        brand.addView(label(" AUDIO", 23f, green, true).apply { typeface = Typeface.create("sans-serif-black", Typeface.BOLD) })
+        root.addView(brand)
+        root.addView(label("LIVE AUDIO  •  REAL-TIME DSP", 12f, cyan, true).apply { setPadding(0, dp(3), 0, dp(16)) })
 
-        val setup = card()
-        setup.addView(text("NOW PLAYING", 11f, green, true))
-        setup.addView(text("Paste a YouTube video link", 18f, white, true).apply {
-            setPadding(0, dp(5), 0, dp(10))
-        })
-        urlInput = EditText(this).apply {
-            hint = "https://youtube.com/watch?v=..."
-            setHintTextColor(Color.rgb(125, 133, 151))
-            setTextColor(white)
-            textSize = 14f
+        val source = card()
+        source.addView(label("STREAM SOURCE", 11f, green, true))
+        url = EditText(this).apply {
+            hint = "Paste direct audio / radio stream URL"
+            setHintTextColor(muted); setTextColor(white); textSize = 14f
             isSingleLine = true
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = rounded(surface2, 12)
+            setPadding(dp(13), dp(12), dp(13), dp(12))
+            background = rounded(panel2, 14)
         }
-        setup.addView(urlInput, matchWrap().apply { bottomMargin = dp(10) })
-        setup.addView(button("LOAD YOUTUBE", green, bg) { loadYoutube() }, matchWrap())
-        root.addView(setup, matchWrap().apply { bottomMargin = dp(14) })
+        source.addView(url, match().apply { topMargin = dp(10); bottomMargin = dp(10) })
+        source.addView(button("PROCESS & PLAY", green, bg) { startStream() }, match())
+        source.addView(label("Live stream • processed in memory • not saved", 12f, muted).apply { setPadding(0, dp(9), 0, 0) })
+        root.addView(source, match().apply { bottomMargin = dp(14) })
 
-        val playerCard = card()
-        playerCard.addView(text("PLAYER", 11f, cyan, true).apply {
-            setPadding(0, 0, 0, dp(10))
-        })
-        player = WebView(this).apply {
-            setBackgroundColor(Color.BLACK)
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.mediaPlaybackRequiresUserGesture = true
-            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            webChromeClient = WebChromeClient()
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(224))
-            loadDataWithBaseURL("https://www.youtube.com", playerPlaceholder(), "text/html", "UTF-8", null)
-        }
-        playerCard.addView(player)
-        playerCard.addView(text("Playback uses YouTube's embedded player. Sign-in, age limits, ads and some videos remain controlled by YouTube.", 12f, muted).apply {
-            setPadding(0, dp(10), 0, 0)
-        })
-        root.addView(playerCard, matchWrap().apply { bottomMargin = dp(14) })
+        val now = card()
+        now.addView(label("NOW PLAYING", 11f, cyan, true))
+        stateText = label("Ready for a stream", 16f, white, true).apply { setPadding(0, dp(8), 0, dp(14)) }
+        now.addView(stateText)
+        val transport = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        playButton = button("▶  PLAY", green, bg) { togglePlayback() }
+        transport.addView(playButton, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(8) })
+        transport.addView(button("■  STOP", panel2, white) { stopPlayback() }, LinearLayout.LayoutParams(0, dp(46), 1f))
+        now.addView(transport)
+        root.addView(now, match().apply { bottomMargin = dp(14) })
 
-        val soundCard = card()
-        soundCard.addView(text("SPATIAL SOUND STUDIO", 11f, purple, true))
-        soundCard.addView(text("Choose your sound field", 20f, white, true).apply {
-            setPadding(0, dp(5), 0, dp(12))
-        })
-        val presets = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        presets.addView(button("WIDE", surface2, white) { setPreset("wide") },
-            LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(6) })
-        presets.addView(button("CINEMA", surface2, white) { setPreset("cinema") },
-            LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(6) })
-        presets.addView(button("DEEP FIELD", surface2, white) { setPreset("deep") },
-            LinearLayout.LayoutParams(0, dp(44), 1f))
-        soundCard.addView(presets)
-        soundCard.addView(text("3D STAGE · OUTPUT VIRTUALIZER", 12f, white, true).apply {
-            setPadding(0, dp(18), 0, dp(3))
-        })
-        soundCard.addView(text("Attempts Android's system output-mix virtualizer when the phone firmware allows it.", 12f, muted))
-        soundCard.addView(button("ENABLE 3D STAGE", green, bg) { toggleVirtualizer() }, matchWrap().apply {
-            topMargin = dp(10)
-            bottomMargin = dp(8)
-        })
-        effectStatus = text("3D stage: not enabled", 13f, muted)
-        soundCard.addView(effectStatus)
-
-        soundCard.addView(text("DEEP FIELD · BASS DEPTH", 12f, white, true).apply {
-            setPadding(0, dp(18), 0, 0)
-        })
-        val bassSeek = SeekBar(this).apply {
-            max = 1000
-            progress = bassStrength
-            progressTintList = ColorStateList.valueOf(purple)
-            thumbTintList = ColorStateList.valueOf(purple)
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    bassStrength = progress
-                    if (bassOn) applyBassStrength()
+        val sound = card()
+        sound.addView(label("SOUND FIELD", 11f, violet, true))
+        sound.addView(label("Choose a sound", 20f, white, true).apply { setPadding(0, dp(5), 0, dp(12)) })
+        val presets = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf("WIDE", "CINEMA", "DEEP FIELD").forEachIndexed { i, name ->
+            val tint = when (i) { 0 -> green; 1 -> cyan; else -> violet }
+            presets.addView(button(name, if (preset == name) tint else panel2, if (preset == name) bg else white) {
+                setPreset(name)
+                for (j in 0 until presets.childCount) {
+                    val b = presets.getChildAt(j) as Button
+                    val active = b.text.toString() == preset
+                    val c = when (b.text.toString()) { "WIDE" -> green; "CINEMA" -> cyan; else -> violet }
+                    b.backgroundTintList = android.content.res.ColorStateList.valueOf(if (active) c else panel2)
+                    b.setTextColor(if (active) bg else white)
                 }
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            }, LinearLayout.LayoutParams(0, dp(43), 1f).apply { if (i < 2) rightMargin = dp(6) })
+        }
+        sound.addView(presets)
+        sound.addView(label("INTENSITY", 11f, muted, true).apply { setPadding(0, dp(17), 0, dp(2)) })
+        val intensity = SeekBar(this).apply {
+            max = 100; progress = 55
+            progressTintList = android.content.res.ColorStateList.valueOf(violet)
+            thumbTintList = android.content.res.ColorStateList.valueOf(violet)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: SeekBar?, value: Int, fromUser: Boolean) {
+                    val v = value / 100f
+                    dsp.width = 0.85f + v * 0.85f
+                    dsp.bass = v * 0.65f
+                    dsp.ambience = v * 0.20f
+                }
+                override fun onStartTrackingTouch(s: SeekBar?) {}
+                override fun onStopTrackingTouch(s: SeekBar?) {}
             })
         }
-        bassSeekBar = bassSeek
-        soundCard.addView(bassSeek, matchWrap())
-        soundCard.addView(button("ENABLE DEEP FIELD", purple, Color.WHITE) { toggleBass() }, matchWrap().apply {
-            topMargin = dp(4)
+        sound.addView(intensity, match())
+        sound.addView(CheckBox(this).apply {
+            text = "Audio processing ON"; setTextColor(white)
+            buttonTintList = android.content.res.ColorStateList.valueOf(green); isChecked = true
+            setOnCheckedChangeListener { _, checked ->
+                dsp.enabled = checked
+                text = if (checked) "Audio processing ON" else "Original audio (bypass)"
+            }
         })
-        depthStatus = text("Deep field: not enabled", 13f, muted).apply {
-            setPadding(0, dp(8), 0, 0)
-        }
-        soundCard.addView(depthStatus)
-        root.addView(soundCard, matchWrap().apply { bottomMargin = dp(14) })
-
-        val diagnostic = card()
-        diagnostic.addView(text("COMPATIBILITY CHECK", 11f, cyan, true))
-        diagnostic.addView(text("Some Android builds block global effects or playback capture. Test them separately; successful capture does not mean audio output was processed.", 13f, muted).apply {
-            setPadding(0, dp(7), 0, dp(12))
+        root.addView(sound, match().apply { bottomMargin = dp(12) })
+        root.addView(label("YouTube links cannot be processed here. Use a direct audio stream URL.", 12f, muted).apply {
+            setPadding(dp(4), 0, dp(4), dp(8))
         })
-        captureButton = button("TEST LIVE PLAYBACK CAPTURE", cyan, bg) { requestCapture() }
-        diagnostic.addView(captureButton, matchWrap())
-        status = text("Capture test: idle", 13f, muted).apply { setPadding(0, dp(10), 0, 0) }
-        diagnostic.addView(status)
-        diagnostic.addView(button("STOP CAPTURE TEST", surface2, white) {
-            stopService(Intent(this@MainActivity, CaptureService::class.java))
-            status.text = "Capture test stopped."
-            captureButton.isEnabled = true
-        }, matchWrap().apply { topMargin = dp(8) })
-        root.addView(diagnostic, matchWrap().apply { bottomMargin = dp(16) })
-
-        root.addView(text("HONEST COMPATIBILITY NOTE", 11f, Color.rgb(255, 190, 113), true))
-        root.addView(text(
-            "This app is not Dolby Atmos-certified. 3D Stage and Deep Field try Android output-mix effects; many manufacturers disable these effects for third-party apps. If firmware rejects them, the app cannot force a system-wide effect. No audio is downloaded or saved by this app.",
-            12f, muted
-        ).apply { setPadding(0, dp(6), 0, dp(12)) })
         setContentView(scroll)
+        setupPlayer()
     }
 
-    private fun loadYoutube() {
-        val raw = urlInput.text.toString().trim()
-        val id = extractVideoId(raw)
-        if (id == null) {
-            Toast.makeText(this, "Enter a valid YouTube video URL or 11-character video ID.", Toast.LENGTH_LONG).show()
+    private fun setupPlayer() {
+        dsp = SpatialDspProcessor()
+        val sink = DefaultAudioSink.Builder(this).setAudioProcessors(arrayOf<AudioProcessor>(dsp)).build()
+        val renderers = DefaultRenderersFactory(this).setAudioSink(sink)
+        player = ExoPlayer.Builder(this, renderers).build().also { p ->
+            p.addListener(object : Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    playButton.text = if (isPlaying) "Ⅱ  PAUSE" else "▶  PLAY"
+                    if (isPlaying) stateText.text = "Processing live audio"
+                }
+                override fun onPlayerError(error: PlaybackException) {
+                    stateText.text = "Stream unavailable"
+                    Toast.makeText(this@MainActivity, "Can't play this stream. Check the direct audio URL.", Toast.LENGTH_LONG).show()
+                }
+            })
+        }
+    }
+
+    private fun startStream() {
+        val raw = url.text.toString().trim()
+        val uri = runCatching { Uri.parse(raw) }.getOrNull()
+        val scheme = uri?.scheme?.lowercase(Locale.ROOT)
+        val host = uri?.host?.lowercase(Locale.ROOT).orEmpty()
+        if (uri == null || scheme !in listOf("http", "https") || host.isBlank()) {
+            Toast.makeText(this, "Paste a valid direct audio stream URL.", Toast.LENGTH_LONG).show()
             return
         }
-        val html = """
-            <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-            <style>html,body{margin:0;padding:0;background:#000;color:#fff;font-family:Arial;height:100%}
-            .frame{position:relative;width:100%;height:100%;overflow:hidden}iframe{position:absolute;inset:0;width:100%;height:100%;border:0}</style>
-            </head><body><div class="frame"><iframe
-            src="https://www.youtube.com/embed/$id?playsinline=1&controls=1&rel=0&autoplay=0&origin=https%3A%2F%2Fgithub.com"
-            title="YouTube player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div></body></html>
-        """.trimIndent()
-        player.loadDataWithBaseURL("https://github.com/rath0darya/Spatial-Audio-Engine/", html, "text/html", "UTF-8", null)
-    }
-
-    private fun extractVideoId(raw: String): String? {
-        if (raw.matches(Regex("^[A-Za-z0-9_-]{11}$"))) return raw
-        return try {
-            val uri = Uri.parse(raw)
-            val host = (uri.host ?: "").lowercase()
-            val id = when {
-                host == "youtu.be" || host.endsWith(".youtu.be") -> uri.lastPathSegment
-                (host == "youtube.com" || host.endsWith(".youtube.com")) -> when {
-                    uri.path == "/watch" -> uri.getQueryParameter("v")
-                    uri.pathSegments.firstOrNull() in listOf("embed", "shorts", "live") -> uri.pathSegments.getOrNull(1)
-                    else -> null
-                }
-                else -> null
-            }
-            id?.takeIf { it.matches(Regex("^[A-Za-z0-9_-]{11}$")) }
-        } catch (_: Exception) { null }
-    }
-
-    private fun setPreset(preset: String) {
-        val stageStrength: Int
-        when (preset) {
-            "wide" -> { bassStrength = 250; stageStrength = 1000 }
-            "cinema" -> { bassStrength = 480; stageStrength = 720 }
-            else -> { bassStrength = 850; stageStrength = 420 }
+        if (host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be" || host.endsWith(".youtu.be")) {
+            Toast.makeText(this, "YouTube does not expose audio samples to this DSP. Use a direct audio stream URL.", Toast.LENGTH_LONG).show()
+            return
         }
-        bassSeekBar?.progress = bassStrength
+        stateText.text = "Connecting to stream…"
         try {
-            val effect = virtualizer ?: Virtualizer(0, 0).also { virtualizer = it }
-            effect.setStrength(stageStrength.toShort())
-            effect.enabled = true
-            virtualizerOn = effect.enabled
-            effectStatus.text = preset.uppercase() + " preset · 3D Stage " +
-                if (virtualizerOn) "enabled" else "not enabled by firmware"
-        } catch (e: Exception) {
-            virtualizerOn = false
-            effectStatus.text = preset.uppercase() + " preset · 3D Stage unavailable (" + e.javaClass.simpleName + ")"
+            player?.setMediaItem(MediaItem.fromUri(uri))
+            player?.prepare()
+            player?.play()
+        } catch (_: Exception) { stateText.text = "Couldn't open stream" }
+    }
+
+    private fun togglePlayback() {
+        val p = player ?: return
+        if (p.mediaItemCount == 0) Toast.makeText(this, "Paste a stream URL first.", Toast.LENGTH_SHORT).show()
+        else if (p.isPlaying) p.pause() else p.play()
+    }
+
+    private fun stopPlayback() {
+        player?.stop(); player?.clearMediaItems()
+        playButton.text = "▶  PLAY"; stateText.text = "Stopped"
+    }
+
+    private fun setPreset(name: String) {
+        preset = name
+        when (name) {
+            "WIDE" -> { dsp.width = 1.65f; dsp.bass = 0.14f; dsp.ambience = 0.05f }
+            "CINEMA" -> { dsp.width = 1.35f; dsp.bass = 0.28f; dsp.ambience = 0.15f }
+            else -> { dsp.width = 1.20f; dsp.bass = 0.55f; dsp.ambience = 0.20f }
         }
-        if (preset == "deep" && !bassOn) {
-            toggleBass()
-        } else if (bassOn) {
-            applyBassStrength()
-        } else {
-            depthStatus.text = preset.uppercase() + " preset selected · bass effect is off."
-        }
-        Toast.makeText(this, preset.uppercase() + " preset selected.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "$name enabled", Toast.LENGTH_SHORT).show()
     }
 
-    private fun toggleVirtualizer() {
-        try {
-            if (virtualizerOn) {
-                virtualizer?.enabled = false
-                virtualizerOn = false
-                effectStatus.text = "3D stage disabled."
-            } else {
-                val effect = virtualizer ?: Virtualizer(0, 0).also { virtualizer = it }
-                effect.setStrength(1000.toShort())
-                effect.enabled = true
-                virtualizerOn = effect.enabled
-                effectStatus.text = if (virtualizerOn) {
-                    "3D stage enabled by Android audio effects. Listen and verify on your earbuds."
-                } else {
-                    "Phone firmware did not enable the output virtualizer."
-                }
-            }
-        } catch (e: Exception) {
-            virtualizerOn = false
-            effectStatus.text = "3D stage unavailable on this firmware (" + e.javaClass.simpleName + ")."
-            Toast.makeText(this, "System virtualizer is not supported by this device build.", Toast.LENGTH_LONG).show()
-        }
+    private fun card() = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL; setPadding(dp(15), dp(15), dp(15), dp(15))
+        background = rounded(panel, 20)
     }
-
-    private fun toggleBass() {
-        try {
-            if (bassOn) {
-                bassBoost?.enabled = false
-                bassOn = false
-                depthStatus.text = "Deep field disabled."
-            } else {
-                val effect = bassBoost ?: BassBoost(0, 0).also { bassBoost = it }
-                effect.setStrength(bassStrength.toShort())
-                effect.enabled = true
-                bassOn = effect.enabled
-                depthStatus.text = if (bassOn) {
-                    "Deep field enabled · strength " + bassStrength + "/1000"
-                } else {
-                    "Phone firmware did not enable deep-field bass."
-                }
-            }
-        } catch (e: Exception) {
-            bassOn = false
-            depthStatus.text = "Deep field unavailable on this firmware (" + e.javaClass.simpleName + ")."
-            Toast.makeText(this, "System bass effect is not supported by this device build.", Toast.LENGTH_LONG).show()
-        }
+    private fun label(value: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
+        text = value; textSize = size; setTextColor(color)
+        if (bold) typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
     }
-
-    private fun applyBassStrength() {
-        try {
-            bassBoost?.setStrength(bassStrength.toShort())
-            depthStatus.text = "Deep field active · strength " + bassStrength + "/1000"
-        } catch (_: Exception) {
-            depthStatus.text = "Could not update deep-field strength."
-        }
+    private fun button(value: String, fill: Int, textColor: Int, action: () -> Unit) = Button(this).apply {
+        text = value; textSize = 11f; isAllCaps = false
+        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        setTextColor(textColor); backgroundTintList = android.content.res.ColorStateList.valueOf(fill)
+        minHeight = dp(42); minimumHeight = dp(42); setPadding(dp(7), dp(3), dp(7), dp(3))
+        setOnClickListener { action() }
     }
-
-    private fun requestCapture() {
-        val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        status.text = "Waiting for Android's system capture approval…"
-        @Suppress("DEPRECATION")
-        startActivityForResult(manager.createScreenCaptureIntent(), projectionRequest)
-    }
-
-    @Deprecated("Deprecated by Android, retained for broad device compatibility")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == projectionRequest) {
-            if (resultCode == RESULT_OK && data != null) {
-                val intent = Intent(this, CaptureService::class.java).apply {
-                    putExtra(CaptureService.EXTRA_RESULT_CODE, resultCode)
-                    putExtra(CaptureService.EXTRA_RESULT_DATA, data)
-                }
-                if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
-                status.text = "Capture approved. Play audio and check the ongoing notification. This test measures capture only."
-                captureButton.isEnabled = false
-            } else {
-                status.text = "Capture permission denied; no audio was captured."
-            }
-        }
-    }
-
-    private fun playerPlaceholder(): String = """
-        <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-        <style>body{margin:0;background:#10131b;color:#a9b1c2;font:14px Arial;display:flex;align-items:center;justify-content:center;height:100vh;text-align:center}</style>
-        </head><body>Paste a YouTube link above and tap LOAD YOUTUBE</body></html>
-    """.trimIndent()
-
-    private fun card(): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(dp(16), dp(16), dp(16), dp(16))
-        background = rounded(surface, 20)
-    }
-
-    private fun text(value: String, size: Float, color: Int, bold: Boolean = false): TextView =
-        TextView(this).apply {
-            text = value
-            textSize = size
-            setTextColor(color)
-            if (bold) typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            gravity = Gravity.START
-        }
-
-    private fun button(label: String, fill: Int, foreground: Int, action: () -> Unit): Button =
-        Button(this).apply {
-            text = label
-            textSize = 12f
-            isAllCaps = false
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(foreground)
-            backgroundTintList = ColorStateList.valueOf(fill)
-            minHeight = dp(44)
-            setPadding(dp(12), dp(4), dp(12), dp(4))
-            setOnClickListener { action() }
-        }
-
-    private fun rounded(color: Int, radius: Int): GradientDrawable = GradientDrawable().apply {
-        setColor(color)
-        cornerRadius = dp(radius).toFloat()
-    }
-
-    private fun matchWrap(): LinearLayout.LayoutParams =
-        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
-
-    override fun onDestroy() {
-        try { virtualizer?.release() } catch (_: Exception) {}
-        try { bassBoost?.release() } catch (_: Exception) {}
-        try {
-            player.stopLoading()
-            player.loadUrl("about:blank")
-            player.destroy()
-        } catch (_: Exception) {}
-        super.onDestroy()
-    }
+    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat() }
+    private fun match() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+    override fun onDestroy() { player?.release(); super.onDestroy() }
 }
