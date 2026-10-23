@@ -226,11 +226,11 @@ class MainActivity : Activity() {
             <style>html,body{margin:0;padding:0;background:#000;color:#fff;font-family:Arial;height:100%}
             .frame{position:relative;width:100%;height:100%;overflow:hidden}iframe{position:absolute;inset:0;width:100%;height:100%;border:0}</style>
             </head><body><div class="frame"><iframe
-            src="https://www.youtube.com/embed/$id?playsinline=1&controls=1&rel=0&autoplay=0"
+            src="https://www.youtube.com/embed/$id?playsinline=1&controls=1&rel=0&autoplay=0&origin=https%3A%2F%2Fgithub.com"
             title="YouTube player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div></body></html>
         """.trimIndent()
-        player.loadDataWithBaseURL("https://www.youtube.com", html, "text/html", "UTF-8", null)
+        player.loadDataWithBaseURL("https://github.com/rath0darya/Spatial-Audio-Engine/", html, "text/html", "UTF-8", null)
     }
 
     private fun extractVideoId(raw: String): String? {
