@@ -137,7 +137,7 @@ class MainActivity : Activity() {
             }
         })
         root.addView(sound, match().apply { bottomMargin = dp(12) })
-        root.addView(label("YouTube links cannot be processed here. Use a direct audio stream URL.", 12f, muted).apply {
+        root.addView(label("DSP applies only to audio decoded inside this player. YouTube links are not processed.", 12f, muted).apply {
             setPadding(dp(4), 0, dp(4), dp(8))
         })
         setContentView(scroll)
@@ -161,7 +161,7 @@ class MainActivity : Activity() {
             p.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     playButton.text = if (isPlaying) "Ⅱ  PAUSE" else "▶  PLAY"
-                    if (isPlaying) stateText.text = "Processing live audio"
+                    if (isPlaying) stateText.text = if (dsp.enabled) "Spatial DSP active • live audio" else "Playing original audio • DSP bypassed"
                 }
                 override fun onPlayerError(error: PlaybackException) {
                     stateText.text = "Stream unavailable"
@@ -181,18 +181,12 @@ class MainActivity : Activity() {
             return
         }
         if (host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be" || host.endsWith(".youtu.be")) {
-            // YouTube playback is handled by the official YouTube app/browser. Android apps
-            // cannot access its decoded PCM for this in-app DSP pipeline.
-            try {
-                val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
-                viewIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(viewIntent)
-                stateText.text = "Opened in YouTube • external audio"
-                Toast.makeText(this, "Opened YouTube. In-app DSP works with supported direct audio streams.", Toast.LENGTH_LONG).show()
-            } catch (_: Exception) {
-                stateText.text = "Couldn't open YouTube"
-                Toast.makeText(this, "No app is available to open this YouTube link.", Toast.LENGTH_LONG).show()
-            }
+            stateText.text = "YouTube audio cannot enter the DSP"
+            Toast.makeText(
+                this,
+                "This link would play outside the app without spatial processing. Paste a direct audio stream URL to hear the DSP effect.",
+                Toast.LENGTH_LONG
+            ).show()
             return
         }
         stateText.text = "Connecting to stream…"
