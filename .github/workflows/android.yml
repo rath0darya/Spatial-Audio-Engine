@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: spatial-audio-release
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-and-release:
@@ -43,8 +43,39 @@ jobs:
           test -s app/build/outputs/apk/debug/app-debug.apk
           mkdir -p release-output
           cp app/build/outputs/apk/debug/app-debug.apk release-output/Spatial-Audio-Engine-v0.3.0.apk
-          test -s release-output/Spatial-Audio-Engine-v0.2.0.apk
-          ls -lh release-output/Spatial-Audio-Engine-v0.2.0.apk
+          test -s release-output/Spatial-Audio-Engine-v0.3.0.apk
+          ls -lh release-output/Spatial-Audio-Engine-v0.3.0.apk
+
+      - name: Remove outdated releases and APK assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          releases="$(curl --fail --silent --show-error -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases?per_page=100")"
+          while IFS=
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ github.token }}
+          tag_name: v0.3.0-build.${{ github.run_number }}
+          name: Spatial Audio Engine v0.3.0 — Build ${{ github.run_number }}
+          body: |
+            Spotify-inspired Android listening companion with embedded YouTube playback and best-effort Android output-mix virtualizer / bass effects.
+
+            **Device compatibility:** system audio effects are OEM-dependent and may be rejected by the phone. This is not Dolby Atmos-certified. See README for limitations and test instructions.
+          draft: false
+          prerelease: true
+          generate_release_notes: true
+          files: release-output/Spatial-Audio-Engine-v0.3.0.apk
+          fail_on_unmatched_files: true
+          make_latest: false
+\t' read -r release_id tag_name; do
+            [ -n "$release_id" ] || continue
+            echo "Deleting outdated release $tag_name (id $release_id)"
+            curl --fail --silent --show-error -X DELETE -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/$release_id"
+            code="$(curl --silent --show-error -o /dev/null -w "%{http_code}" -X DELETE -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs/tags/$tag_name")"
+            [[ "$code" == "204" || "$code" == "404" ]]
+          done < <(printf '%s' "$releases" | python3 -c 'import json,sys; [print(str(r["id"])+"\t"+r["tag_name"]) for r in json.load(sys.stdin)]')
 
       - name: Publish APK to GitHub Releases
         uses: softprops/action-gh-release@v2
