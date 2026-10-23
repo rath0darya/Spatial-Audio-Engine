@@ -15,3 +15,6 @@ Native Android stream player with a custom real-time PCM DSP pipeline. Audio is 
 - The engine implements virtual stereo DSP. It is not Dolby Atmos decoding or Dolby-certified processing.
 - Some URLs may not be direct media streams or may require unsupported codecs, authentication, or special headers.
 - Playback uses temporary streaming buffers; no media files are intentionally written to local storage.
+
+
+YouTube links are not processed in-app and will not be opened as if DSP were applied. Use a supported direct audio-stream URL for in-app spatial DSP. Mono streams are expanded to stereo for virtual spatial cues; results depend on source audio and listening equipment.
