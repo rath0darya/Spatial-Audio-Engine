@@ -9,9 +9,9 @@ import kotlin.math.tanh
 /** In-memory PCM stereo widening, low-frequency enhancement and short cross-channel ambience. */
 class SpatialDspProcessor : BaseAudioProcessor() {
     @Volatile var enabled = true
-    @Volatile var width = 1.35f
-    @Volatile var bass = 0.30f
-    @Volatile var ambience = 0.10f
+    @Volatile var width = 1.65f
+    @Volatile var bass = 0.14f
+    @Volatile var ambience = 0.05f
     private var lowL = 0.0
     private var lowR = 0.0
     private var delayL = FloatArray(0)
