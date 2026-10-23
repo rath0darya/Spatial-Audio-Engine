@@ -1,6 +1,7 @@
 package com.spatialaudio.engine
 
 import android.app.Activity
+import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -20,6 +21,7 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.AudioSink
 import java.util.Locale
 
 class MainActivity : Activity() {
@@ -144,8 +146,17 @@ class MainActivity : Activity() {
 
     private fun setupPlayer() {
         dsp = SpatialDspProcessor()
-        val sink = DefaultAudioSink.Builder(this).setAudioProcessors(arrayOf<AudioProcessor>(dsp)).build()
-        val renderers = DefaultRenderersFactory(this).setAudioSink(sink)
+        val renderers = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioOutputPlaybackParams: Boolean
+            ): AudioSink? {
+                return DefaultAudioSink.Builder(context)
+                    .setAudioProcessors(arrayOf<AudioProcessor>(dsp))
+                    .build()
+            }
+        }
         player = ExoPlayer.Builder(this, renderers).build().also { p ->
             p.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
