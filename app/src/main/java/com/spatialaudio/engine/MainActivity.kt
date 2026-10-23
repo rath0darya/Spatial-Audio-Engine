@@ -42,6 +42,7 @@ class MainActivity : Activity() {
     private var virtualizerOn = false
     private var bassOn = false
     private var bassStrength = 650
+    private var bassSeekBar: SeekBar? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -178,6 +179,7 @@ class MainActivity : Activity() {
                 override fun onStopTrackingTouch(seekBar: SeekBar?) {}
             })
         }
+        bassSeekBar = bassSeek
         soundCard.addView(bassSeek, matchWrap())
         soundCard.addView(button("ENABLE DEEP FIELD", purple, Color.WHITE) { toggleBass() }, matchWrap().apply {
             topMargin = dp(4)
@@ -238,7 +240,7 @@ class MainActivity : Activity() {
             val host = (uri.host ?: "").lowercase()
             val id = when {
                 host == "youtu.be" || host.endsWith(".youtu.be") -> uri.lastPathSegment
-                host.contains("youtube.com") -> when {
+                (host == "youtube.com" || host.endsWith(".youtube.com")) -> when {
                     uri.path == "/watch" -> uri.getQueryParameter("v")
                     uri.pathSegments.firstOrNull() in listOf("embed", "shorts", "live") -> uri.pathSegments.getOrNull(1)
                     else -> null
@@ -250,23 +252,32 @@ class MainActivity : Activity() {
     }
 
     private fun setPreset(preset: String) {
+        val stageStrength: Int
         when (preset) {
-            "wide" -> {
-                bassStrength = 250
-                effectStatus.text = "Wide preset selected · 3D Stage " + if (virtualizerOn) "active" else "off"
-                Toast.makeText(this, "Wide preset selected. Enable 3D Stage if supported.", Toast.LENGTH_SHORT).show()
-            }
-            "cinema" -> {
-                bassStrength = 480
-                effectStatus.text = "Cinema preset selected · 3D Stage " + if (virtualizerOn) "active" else "off"
-                Toast.makeText(this, "Cinema preset selected. Enable 3D Stage if supported.", Toast.LENGTH_SHORT).show()
-            }
-            "deep" -> {
-                bassStrength = 850
-                if (!bassOn) toggleBass() else applyBassStrength()
-                Toast.makeText(this, "Deep Field preset selected.", Toast.LENGTH_SHORT).show()
-            }
+            "wide" -> { bassStrength = 250; stageStrength = 1000 }
+            "cinema" -> { bassStrength = 480; stageStrength = 720 }
+            else -> { bassStrength = 850; stageStrength = 420 }
         }
+        bassSeekBar?.progress = bassStrength
+        try {
+            val effect = virtualizer ?: Virtualizer(0, 0).also { virtualizer = it }
+            effect.setStrength(stageStrength.toShort())
+            effect.enabled = true
+            virtualizerOn = effect.enabled
+            effectStatus.text = preset.uppercase() + " preset · 3D Stage " +
+                if (virtualizerOn) "enabled" else "not enabled by firmware"
+        } catch (e: Exception) {
+            virtualizerOn = false
+            effectStatus.text = preset.uppercase() + " preset · 3D Stage unavailable (" + e.javaClass.simpleName + ")"
+        }
+        if (preset == "deep" && !bassOn) {
+            toggleBass()
+        } else if (bassOn) {
+            applyBassStrength()
+        } else {
+            depthStatus.text = preset.uppercase() + " preset selected · bass effect is off."
+        }
+        Toast.makeText(this, preset.uppercase() + " preset selected.", Toast.LENGTH_SHORT).show()
     }
 
     private fun toggleVirtualizer() {
